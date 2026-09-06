@@ -36,5 +36,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "spring-boot-service.fullname" . }}
+            {{- if .Values.externalSecret.enabled }}
+            - secretRef:
+                name: {{ include "spring-boot-service.fullname" . }}
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
