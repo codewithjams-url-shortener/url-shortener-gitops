@@ -34,3 +34,14 @@ probes:
     path: /actuator/health/readiness
 
 config: {}
+
+externalSecret:
+  enabled: false
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+  data: []
+    # - secretKey: DB_PASSWORD
+    #   remoteRef:
+    #     key: url-service/db-password
