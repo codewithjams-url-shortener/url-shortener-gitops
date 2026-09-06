@@ -42,3 +42,18 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.appConfigAgent.enabled }}
+        - name: appconfig-agent
+          image: "{{ .Values.appConfigAgent.image.repository }}:{{ .Values.appConfigAgent.image.tag }}"
+          ports:
+            - name: appconfig
+              containerPort: {{ .Values.appConfigAgent.port }}
+              protocol: TCP
+          env:
+            - name: AWS_REGION
+              value: {{ .Values.appConfigAgent.awsRegion | quote }}
+            {{- if .Values.appConfigAgent.awsEndpointUrl }}
+            - name: AWS_ENDPOINT_URL
+              value: {{ .Values.appConfigAgent.awsEndpointUrl | quote }}
+            {{- end }}
+        {{- end }}
