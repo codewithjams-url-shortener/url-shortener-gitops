@@ -45,3 +45,12 @@ externalSecret:
     # - secretKey: DB_PASSWORD
     #   remoteRef:
     #     key: url-service/db-password
+
+appConfigAgent:
+  enabled: false
+  image:
+    repository: public.ecr.aws/aws-appconfig/aws-appconfig-agent
+    tag: "2.x"
+  port: 2772
+  awsRegion: us-west-2
+  awsEndpointUrl: ""
