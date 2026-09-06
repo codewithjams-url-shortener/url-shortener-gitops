@@ -1,0 +1,15 @@
+# Helm
+charts/**/charts/
+*.tgz
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store

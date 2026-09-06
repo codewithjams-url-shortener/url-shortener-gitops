@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "spring-boot-service.fullname" . }}
+  labels:
+    {{- include "spring-boot-service.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "spring-boot-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "spring-boot-service.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "spring-boot-service.serviceAccountName" . }}
+      containers:
+        - name: {{ include "spring-boot-service.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+          envFrom:
+            - configMapRef:
+                name: {{ include "spring-boot-service.fullname" . }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
