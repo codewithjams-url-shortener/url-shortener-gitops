@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: analytics-service
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/codewithjams-url-shortener/url-shortener-gitops.git
+      targetRevision: main
+      path: charts/spring-boot-service
+      helm:
+        valueFiles:
+          - $values/services/analytics-service/values-local.yaml
+    - repoURL: https://github.com/codewithjams-url-shortener/url-shortener-gitops.git
+      targetRevision: main
+      path: services/analytics-service
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: analytics-service
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

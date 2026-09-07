@@ -1,0 +1,6 @@
+image:
+  repository: analytics-service
+  tag: latest
+
+config:
+  SPRING_PROFILES_ACTIVE: local
