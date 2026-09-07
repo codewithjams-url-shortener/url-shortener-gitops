@@ -8,7 +8,12 @@ spec:
     - list:
         elements:
           - environment: local
-          - environment: aws
+          # "aws" deliberately omitted — this project only ever runs against one local floci
+          # cluster, so an "aws" entry here would actually sync live (if permanently Degraded)
+          # resources to it, not just exist as inert reference content. The services/aws/,
+          # values-aws.yaml, and cluster-secret-stores/aws.yaml files stay in the repo as
+          # static reference material for anyone forking toward real AWS — re-add an
+          # "environment: aws" element here to wire them back up. See ADR-0007 and issue #12.
   template:
     metadata:
       name: 'services-{{environment}}'
