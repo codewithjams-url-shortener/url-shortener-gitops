@@ -1,10 +1,10 @@
-# IMPORTANT: this directory MUST stay outside apps/, at the repo root. It's applied exclusively
-# via apps/platform/external-secrets.yaml's second ($values-style directory) source, alongside
-# the external-secrets Helm chart. If moved back under apps/, root.yaml's own recursive directory
-# sync would pick these ClusterSecretStore manifests up a second time and try to apply them
-# directly — before the external-secrets Application has installed the ESO CRDs that define this
-# resource kind, causing a sync failure ("the server could not find the requested resource" for
-# external-secrets.io). Root cause and full history: issue #12.
+# IMPORTANT: cluster-secret-stores/ MUST stay outside apps/, at the repo root. It's applied
+# exclusively via apps/platform/external-secrets.yaml's second ($values-style directory) source,
+# alongside the external-secrets Helm chart. If moved back under apps/, root.yaml's own recursive
+# directory sync would pick these ClusterSecretStore manifests up a second time and try to apply
+# them directly — before the external-secrets Application has installed the ESO CRDs that define
+# this resource kind, causing a sync failure ("the server could not find the requested resource"
+# for external-secrets.io). Root cause and full history: issue #12.
 #
 # NOTE: use v1, not v1beta1 — this chart's CRD lists v1beta1 but marks it served=false/
 # storage=false (deprecated, kept only for the version list); v1 is what's actually served.
