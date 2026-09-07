@@ -9,6 +9,16 @@ spec:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
     targetRevision: 89.2.2
+    helm:
+      values: |
+        # node-exporter's default host-root mount (/host/root) fails to start under floci's
+        # nested Docker (k3s-in-Docker-Desktop) setup: "path '/' is mounted on '/' but it is
+        # not a shared or slave mount" — a mount-propagation limitation of this environment,
+        # not something fixable via chart config. Disables it; sacrifices host disk-usage
+        # metrics, which aren't needed for this project. See issue #12.
+        prometheus-node-exporter:
+          hostRootFsMount:
+            enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
