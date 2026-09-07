@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: url-service
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/codewithjams-url-shortener/url-shortener-gitops.git
+      targetRevision: main
+      path: charts/spring-boot-service
+      helm:
+        valueFiles:
+          - $values/services/url-service/values-local.yaml
+    - repoURL: https://github.com/codewithjams-url-shortener/url-shortener-gitops.git
+      targetRevision: main
+      path: services/url-service
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: url-service
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
