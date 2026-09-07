@@ -1,0 +1,21 @@
+# IMPORTANT: static reference content only — deliberately NOT synced. See
+# ../local/local.yaml for why cluster-secret-stores/ stays outside apps/ and why this uses v1,
+# not v1beta1. This aws/ directory is excluded from external-secrets.yaml's directory source
+# (which points only at cluster-secret-stores/local), so this ClusterSecretStore never actually
+# reaches the cluster — it references an external-secrets-irsa ServiceAccount that doesn't exist,
+# for someone forking this toward real AWS. Re-point external-secrets.yaml's second source at
+# cluster-secret-stores/ (with directory.recurse: true) to wire this back up. See issue #12.
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: aws-secrets-manager
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-west-2
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: external-secrets-irsa
+            namespace: external-secrets
