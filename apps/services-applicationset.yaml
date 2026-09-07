@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: environments
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - environment: local
+          - environment: aws
+  template:
+    metadata:
+      name: 'services-{{environment}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/codewithjams-url-shortener/url-shortener-gitops.git
+        targetRevision: main
+        path: 'services/{{environment}}'
+        directory:
+          recurse: true
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
