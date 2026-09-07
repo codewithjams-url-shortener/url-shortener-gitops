@@ -13,7 +13,9 @@ spec:
     path: apps
     directory:
       recurse: true
-      exclude: "root.yaml,platform/cluster-secret-stores/**"
+      exclude: "root.yaml"
+      # NOTE: cluster-secret-stores/ lives at the repo root, outside this apps/ tree, specifically
+      # so this recursive sync never sees it — see cluster-secret-stores/local.yaml for why.
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
