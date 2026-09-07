@@ -1,5 +1,6 @@
-# IMPORTANT: see local.yaml in this same directory for why this must stay outside apps/.
-apiVersion: external-secrets.io/v1beta1
+# IMPORTANT: see local.yaml in this same directory for why this must stay outside apps/, and for
+# why this uses v1, not v1beta1.
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
