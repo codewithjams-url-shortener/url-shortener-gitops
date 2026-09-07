@@ -28,3 +28,9 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # kube-prometheus-stack's Prometheus Operator CRDs (thanosrulers, alertmanagerconfigs,
+      # alertmanagers, scrapeconfigs, prometheusagents, prometheuses) hit the same
+      # metadata.annotations size-limit failure external-secrets' CRDs did — see
+      # apps/platform/external-secrets.yaml for the full explanation. Same fix. See issue #12.
+      - ServerSideApply=true
+      - Replace=true
