@@ -4,8 +4,11 @@
 # sync would pick these ClusterSecretStore manifests up a second time and try to apply them
 # directly — before the external-secrets Application has installed the ESO CRDs that define this
 # resource kind, causing a sync failure ("the server could not find the requested resource" for
-# external-secrets.io/v1beta1). Root cause and full history: issue #12.
-apiVersion: external-secrets.io/v1beta1
+# external-secrets.io). Root cause and full history: issue #12.
+#
+# NOTE: use v1, not v1beta1 — this chart's CRD lists v1beta1 but marks it served=false/
+# storage=false (deprecated, kept only for the version list); v1 is what's actually served.
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: local-secrets-manager
