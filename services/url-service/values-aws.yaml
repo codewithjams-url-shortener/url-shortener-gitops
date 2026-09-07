@@ -1,0 +1,6 @@
+image:
+  repository: url-service
+  tag: latest
+
+config:
+  SPRING_PROFILES_ACTIVE: aws
