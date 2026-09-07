@@ -1,6 +1,17 @@
+# TEMPORARY: nginx swap for #12's live ArgoCD sync verification, since no real redirect-service
+# image exists yet (Phase 7). Revert to the real image + Actuator probe paths once Phase 7 builds one.
 image:
-  repository: redirect-service
-  tag: latest
+  repository: nginx
+  tag: stable
+
+service:
+  port: 80
+
+probes:
+  liveness:
+    path: /
+  readiness:
+    path: /
 
 config:
   SPRING_PROFILES_ACTIVE: local
