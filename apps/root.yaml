@@ -13,7 +13,7 @@ spec:
     path: apps
     directory:
       recurse: true
-      exclude: "root.yaml"
+      exclude: "root.yaml,platform/cluster-secret-stores/**"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
