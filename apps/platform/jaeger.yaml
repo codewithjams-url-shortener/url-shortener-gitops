@@ -1,0 +1,53 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: jaeger
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://jaegertracing.github.io/helm-charts
+    chart: jaeger
+    targetRevision: 4.13.1
+    helm:
+      values: |
+        userconfig:
+          service:
+            extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+            pipelines:
+              traces:
+                receivers: [otlp]
+                exporters: [jaeger_storage_exporter]
+          extensions:
+            healthcheckv2:
+              use_v2: true
+              http:
+                endpoint: 0.0.0.0:13133
+            jaeger_query:
+              base_path: /
+              storage:
+                traces: primary_store
+            jaeger_storage:
+              backends:
+                primary_store:
+                  memory:
+                    max_traces: 100000
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
+                http:
+                  endpoint: 0.0.0.0:4318
+          exporters:
+            jaeger_storage_exporter:
+              trace_storage: primary_store
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
