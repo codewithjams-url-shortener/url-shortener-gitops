@@ -1,0 +1,6 @@
+image:
+  repository: redirect-service
+  tag: latest
+
+config:
+  SPRING_PROFILES_ACTIVE: local
