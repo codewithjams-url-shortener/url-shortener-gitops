@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: redirect-service
+  name: aws-redirect-service
   namespace: argocd
 spec:
   project: default

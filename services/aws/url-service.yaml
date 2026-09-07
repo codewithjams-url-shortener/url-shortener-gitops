@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: url-service
+  name: aws-url-service
   namespace: argocd
 spec:
   project: default
