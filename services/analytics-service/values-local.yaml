@@ -1,17 +1,12 @@
-# TEMPORARY: nginx swap for #12's live ArgoCD sync verification, since no real analytics-service
-# image exists yet (Phase 8). Revert to the real image + Actuator probe paths once Phase 8 builds one.
 image:
-  repository: nginx
-  tag: stable
+  repository: localhost:5100/analytics-service
+  tag: c876c22
 
+# Chart default is 8080; moved off it to avoid colliding with unrelated local tooling when
+# running services directly on the host outside Kubernetes (e.g. a leftover
+# kubectl port-forward). See url-shortener-gitops#39 and url-service#1.
 service:
-  port: 80
-
-probes:
-  liveness:
-    path: /
-  readiness:
-    path: /
+  port: 5235
 
 config:
   SPRING_PROFILES_ACTIVE: local
