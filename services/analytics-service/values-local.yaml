@@ -1,6 +1,6 @@
 image:
   repository: localhost:5100/analytics-service
-  tag: c876c22
+  tag: defb99f
 
 # Chart default is 8080; moved off it to avoid colliding with unrelated local tooling when
 # running services directly on the host outside Kubernetes (e.g. a leftover
