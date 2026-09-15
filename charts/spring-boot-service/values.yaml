@@ -33,7 +33,16 @@ probes:
   readiness:
     path: /actuator/health/readiness
 
-config: {}
+serviceMonitor:
+  enabled: true
+  releaseLabel: prometheus-stack
+  path: /actuator/prometheus
+  interval: 15s
+
+config:
+  # Overrides each service's own local-dev default (localhost:4318, for bootRun + a manual
+  # Jaeger port-forward) with Jaeger's real in-cluster address. See url-shortener-gitops#42.
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: http://jaeger.monitoring.svc.cluster.local:4318/v1/traces
 
 externalSecret:
   enabled: false
