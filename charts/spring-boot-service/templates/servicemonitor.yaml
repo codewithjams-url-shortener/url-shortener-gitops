@@ -1,0 +1,19 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "spring-boot-service.fullname" . }}
+  labels:
+    {{- include "spring-boot-service.labels" . | nindent 4 }}
+    # Prometheus's own CR only picks up ServiceMonitors carrying this exact label — see
+    # spec.serviceMonitorSelector.matchLabels on the prometheus-stack Prometheus CR.
+    release: {{ .Values.serviceMonitor.releaseLabel }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "spring-boot-service.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path }}
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}
