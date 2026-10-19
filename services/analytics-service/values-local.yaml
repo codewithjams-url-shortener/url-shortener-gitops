@@ -10,3 +10,13 @@ service:
 
 config:
   SPRING_PROFILES_ACTIVE: local
+  # Floci runs on the host, not in the pod, so the application.yaml default of localhost:4566 points at the pod itself.
+  # host.docker.internal:4566 is the address the External Secrets Operator already reaches it on. See url-service's
+  # values-local.yaml for why the names have no underscore between the words of a property.
+  AWS_DYNAMODB_ENDPOINTOVERRIDE: http://host.docker.internal:4566
+  AWS_SQS_ENDPOINTOVERRIDE: http://host.docker.internal:4566
+  # The queue URL carries the host too, so it needs the same address.
+  AWS_SQS_QUEUEURL: http://host.docker.internal:4566/000000000000/click-events-queue
+  AWS_S3_ENDPOINTOVERRIDE: http://host.docker.internal:4566
+  # Where the 5xx and request counts behind the AppConfig rollback alarm are published (ADR-0011).
+  AWS_CLOUDWATCH_ENDPOINTOVERRIDE: http://host.docker.internal:4566

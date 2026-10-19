@@ -10,3 +10,10 @@ service:
 
 config:
   SPRING_PROFILES_ACTIVE: local
+  # Floci runs on the host, not in the pod, so the application.yaml default of localhost:4566 points at the pod itself.
+  # host.docker.internal:4566 is the address the External Secrets Operator already reaches it on.
+  # Spring Boot binds env vars with the dashes dropped (aws.dynamodb.endpoint-override -> AWS_DYNAMODB_ENDPOINTOVERRIDE);
+  # with an underscore between the words they would bind to a different property and silently do nothing.
+  AWS_DYNAMODB_ENDPOINTOVERRIDE: http://host.docker.internal:4566
+  # Where the 5xx and request counts behind the AppConfig rollback alarm are published (ADR-0011).
+  AWS_CLOUDWATCH_ENDPOINTOVERRIDE: http://host.docker.internal:4566
