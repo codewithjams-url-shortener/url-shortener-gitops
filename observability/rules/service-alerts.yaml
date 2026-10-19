@@ -1,0 +1,40 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: url-shortener-service-alerts
+  labels:
+    # The Prometheus CR only selects rules carrying this label (ruleSelector: release=prometheus-stack).
+    release: prometheus-stack
+spec:
+  groups:
+    - name: url-shortener.services
+      rules:
+        - alert: ServiceDown
+          expr: up{namespace=~"url-service|redirect-service|analytics-service"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.namespace }} is not being scraped"
+            description: "Prometheus has not been able to scrape {{ $labels.namespace }} (pod {{ $labels.pod }}) for 2 minutes: it is down, or its /actuator/prometheus endpoint is."
+
+        # Mirrors the per-service CloudWatch alarm that rolls back an AppConfig deployment (ADR-0011, the cloudwatch-alarm
+        # module in url-shortener-infra): the 5xx share of all responses above 5% over 2 minutes, ignoring periods with
+        # too little traffic to mean anything (the alarm needs 20 responses in a period, here 20 in the 2 minute window).
+        # /actuator is left out on both sides, for the same reason as in the publisher: probes and scrapes would dilute it.
+        # This one only tells you; the CloudWatch alarm is what actually rolls a deployment back.
+        - alert: ServiceHttp5xxRateHigh
+          expr: |
+            (
+              100
+              * sum by (namespace) (increase(http_server_requests_seconds_count{namespace=~"url-service|redirect-service|analytics-service", outcome="SERVER_ERROR", uri!~"/actuator.*"}[2m]))
+              / sum by (namespace) (increase(http_server_requests_seconds_count{namespace=~"url-service|redirect-service|analytics-service", uri!~"/actuator.*"}[2m]))
+            ) > 5
+            and
+            sum by (namespace) (increase(http_server_requests_seconds_count{namespace=~"url-service|redirect-service|analytics-service", uri!~"/actuator.*"}[2m])) >= 20
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.namespace }} is answering more than 5% of requests with a 5xx"
+            description: "{{ $labels.namespace }}'s 5xx share of responses has been above 5% for the last 2 minutes ({{ $value | printf \"%.1f\" }}%). A deployment in progress would be rolled back by its CloudWatch alarm."
