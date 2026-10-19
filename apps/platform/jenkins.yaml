@@ -9,6 +9,143 @@ spec:
     repoURL: https://charts.jenkins.io
     chart: jenkins
     targetRevision: 5.9.56
+    helm:
+      values: |
+        # Jenkins is configured entirely from here (Configuration as Code and Job DSL), so it can be rebuilt from Git. Two
+        # Kubernetes Secrets in the jenkins namespace are NOT in Git and must exist before this syncs, or the pod cannot
+        # start; the create commands are in this file's comments below.
+
+        agent:
+          # At most this many build pods at once (the chart default is 10). The seven jobs all poll and the first poll of
+          # each can start a build, and an image build adds to the build cache on the node, whose shared VM disk filling up
+          # is what evicted every pod once already. The rest wait in the queue.
+          containerCap: 2
+
+        controller:
+          admin:
+            # The chart would otherwise generate a random admin password on every render, so a re-render by ArgoCD
+            # (recreating the argocd namespace did) rewrites the Secret while the running Jenkins keeps the old password.
+            #   kubectl -n jenkins create secret generic jenkins-admin \
+            #     --from-literal=jenkins-admin-user=admin --from-literal=jenkins-admin-password='<choose one>'
+            existingSecret: jenkins-admin
+
+          # The chart's defaults, plus what the shared pipelines need and the defaults lack: Timestamper, for the
+          # `timestamps()` option all three pipelines use, and Job DSL, to create the jobs below.
+          installPlugins:
+            - kubernetes:4540.v612369217f87
+            - workflow-aggregator:608.v67378e9d3db_1
+            - git:5.10.1
+            - configuration-as-code:2121.v86fe99d4b_b_a_b_
+            - timestamper:1.30
+            - job-dsl:3732.v9a_c49a_61a_313
+
+          # The secrets the pipelines bind, mounted as files and referenced in the JCasC below as ${<secret>-<key>}. The
+          # tokens are real ones, so this Secret is created by hand and never committed:
+          #   kubectl -n jenkins create secret generic jenkins-pipeline-credentials \
+          #     --from-literal=github-packages-read-username=<github user> \
+          #     --from-literal=github-packages-read-password=<token with read:packages only> \
+          #     --from-literal=github-packages-publish-username=<github user> \
+          #     --from-literal=github-packages-publish-password=<token with write:packages> \
+          #     --from-literal=gitops-repo-push-username=<github user> \
+          #     --from-literal=gitops-repo-push-password=<token that can push to url-shortener-gitops> \
+          #     --from-literal=appconfig-aws-access-key-id=test \
+          #     --from-literal=appconfig-aws-secret-access-key=test
+          # (test/test are floci's dummy AWS credentials; use real ones against real AWS.)
+          additionalExistingSecrets:
+            - name: jenkins-pipeline-credentials
+              keyName: github-packages-read-username
+            - name: jenkins-pipeline-credentials
+              keyName: github-packages-read-password
+            - name: jenkins-pipeline-credentials
+              keyName: github-packages-publish-username
+            - name: jenkins-pipeline-credentials
+              keyName: github-packages-publish-password
+            - name: jenkins-pipeline-credentials
+              keyName: gitops-repo-push-username
+            - name: jenkins-pipeline-credentials
+              keyName: gitops-repo-push-password
+            - name: jenkins-pipeline-credentials
+              keyName: appconfig-aws-access-key-id
+            - name: jenkins-pipeline-credentials
+              keyName: appconfig-aws-secret-access-key
+
+          JCasC:
+            configScripts:
+              # The pipelines' `@Library('url-shortener-jenkins-lib') _` resolves to this.
+              shared-library: |
+                unclassified:
+                  globalLibraries:
+                    libraries:
+                      - name: url-shortener-jenkins-lib
+                        defaultVersion: main
+                        implicit: false
+                        allowVersionOverride: true
+                        includeInChangesets: true
+                        retriever:
+                          modernSCM:
+                            scm:
+                              git:
+                                remote: https://github.com/codewithjams-url-shortener/url-shortener-jenkins-lib.git
+
+              # The ids are the ones the shared pipelines look up by name. Each is "username with password".
+              credentials: |
+                credentials:
+                  system:
+                    domainCredentials:
+                      - credentials:
+                          - usernamePassword:
+                              scope: GLOBAL
+                              id: github-packages-read
+                              description: Reads the shared libs from GitHub Packages (read:packages only), for the service builds
+                              username: ${jenkins-pipeline-credentials-github-packages-read-username}
+                              password: ${jenkins-pipeline-credentials-github-packages-read-password}
+                          - usernamePassword:
+                              scope: GLOBAL
+                              id: github-packages-publish
+                              description: Publishes the shared libs to GitHub Packages (write:packages), for publishSharedLib only
+                              username: ${jenkins-pipeline-credentials-github-packages-publish-username}
+                              password: ${jenkins-pipeline-credentials-github-packages-publish-password}
+                          - usernamePassword:
+                              scope: GLOBAL
+                              id: gitops-repo-push
+                              description: Pushes the image tag bump to url-shortener-gitops, for buildSpringBootService
+                              username: ${jenkins-pipeline-credentials-gitops-repo-push-username}
+                              password: ${jenkins-pipeline-credentials-gitops-repo-push-password}
+                          - usernamePassword:
+                              scope: GLOBAL
+                              id: appconfig-publish-aws
+                              description: AWS access key id and secret for publishAppConfig (floci's dummy test/test locally)
+                              username: ${jenkins-pipeline-credentials-appconfig-aws-access-key-id}
+                              password: ${jenkins-pipeline-credentials-appconfig-aws-secret-access-key}
+
+              # One job per consuming repo (infra, gitops and jenkins-lib have no Jenkinsfile): the repo's Jenkinsfile, main
+              # branch, polled every 5 minutes (ADR-0008, no webhook). Strings are concatenated, not interpolated, because
+              # JCasC would otherwise read a Groovy ${...} as a secret reference.
+              jobs: |
+                jobs:
+                  - script: |
+                      [
+                        'url-service', 'redirect-service', 'analytics-service',
+                        'url-shortener-shared-libs',
+                        'url-service-config', 'redirect-service-config', 'analytics-service-config'
+                      ].each { repo ->
+                        pipelineJob(repo) {
+                          description('Built from the ' + repo + ' repo\'s Jenkinsfile; polls main every 5 minutes.')
+                          definition {
+                            cpsScm {
+                              scm {
+                                git {
+                                  remote { url('https://github.com/codewithjams-url-shortener/' + repo + '.git') }
+                                  branch('main')
+                                }
+                              }
+                              scriptPath('Jenkinsfile')
+                              lightweight(true)
+                            }
+                          }
+                          triggers { scm('H/5 * * * *') }
+                        }
+                      }
   destination:
     server: https://kubernetes.default.svc
     namespace: jenkins
