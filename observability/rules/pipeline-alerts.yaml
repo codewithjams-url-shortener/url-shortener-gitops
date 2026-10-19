@@ -1,0 +1,85 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: url-shortener-pipeline-alerts
+  labels:
+    # The Prometheus CR only selects rules carrying this label (ruleSelector: release=prometheus-stack).
+    release: prometheus-stack
+spec:
+  # The thresholds below are starting points chosen for a small local system, not measured baselines: tune them once the
+  # real traffic is flowing. The metrics only exist once the services run images that contain the business logic.
+  groups:
+    - name: url-shortener.click-pipeline
+      rules:
+        # analytics-service: the SQS click-event consumer.
+        - alert: ClickEventConsumerStalled
+          expr: sqs_consumer_since_last_poll_seconds > 120
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "The click event consumer has stopped receiving from SQS"
+            description: "{{ $labels.namespace }} has not received from the click events queue successfully for {{ $value | printf \"%.0f\" }}s, so clicks are not being counted."
+
+        - alert: ClickEventBatchFailures
+          expr: increase(sqs_consumer_batches_total{outcome="failure"}[10m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Click event batches keep failing"
+            description: "{{ $labels.namespace }} finished {{ $value | printf \"%.0f\" }} failed click event batches in the last 10 minutes. A failed batch commits nothing and is redelivered, so counts are late, not lost."
+
+        - alert: ClickEventBacklogHigh
+          expr: sqs_consumer_queue_depth{state="visible"} > 1000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The click events queue is backing up"
+            description: "{{ $value | printf \"%.0f\" }} click events have been waiting in the queue for 10 minutes; the consumer is not keeping up."
+
+        - alert: ClickEventsDelayed
+          expr: histogram_quantile(0.95, sum by (le) (rate(sqs_consumer_event_age_seconds_bucket[5m]))) > 60
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Stats are more than a minute behind the clicks"
+            description: "The slowest 5% of click events were acknowledged more than {{ $value | printf \"%.0f\" }}s after the click happened."
+
+        # redirect-service and analytics-service: the Links DynamoDB Stream consumers.
+        - alert: LinksStreamLagHigh
+          expr: streams_consumer_lag_seconds > 300
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A Links stream consumer has stopped polling"
+            description: "{{ $labels.namespace }} has not completed a successful poll of the Links stream for {{ $value | printf \"%.0f\" }}s, so link edits and deletes are not reaching its cache or mirror."
+
+        # redirect-service: the Redis lookup cache.
+        - alert: RedirectCacheHitRatioLow
+          expr: |
+            (
+              sum(rate(cache_lookup_total{result="hit"}[15m]))
+              / sum(rate(cache_lookup_total[15m]))
+            ) < 0.5
+            and
+            sum(increase(cache_lookup_total[15m])) >= 100
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "Fewer than half of redirect lookups are served from Redis"
+            description: "The cache hit ratio has been {{ $value | humanizePercentage }} for 15 minutes, so most redirects are going to DynamoDB."
+
+        # url-service: throttled DynamoDB attempts.
+        - alert: DynamoDbThrottling
+          expr: sum by (namespace) (rate(dynamodb_throttle_count_total[5m])) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "DynamoDB is throttling {{ $labels.namespace }}'s requests"
+            description: "{{ $labels.namespace }} has had DynamoDB request attempts throttled for 5 minutes ({{ $value | printf \"%.2f\" }}/s)."

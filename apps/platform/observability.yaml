@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/codewithjams-url-shortener/url-shortener-gitops.git
+    targetRevision: main
+    # Deliberately outside apps/, for the same reason as cluster-secret-stores/: root.yaml syncs apps/ recursively, so
+    # these manifests would be applied a second time by root, before the CRDs they depend on exist. A kustomization.yaml
+    # in this directory makes ArgoCD build it with Kustomize: the dashboards' JSON files become labelled ConfigMaps.
+    path: observability
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The PrometheusRules need the CRD that prometheus-stack installs. Without this, a first sync that races ahead of
+      # it fails its dry run on the unknown kind; with it, the apply is attempted and the retry below covers the wait.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 6
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

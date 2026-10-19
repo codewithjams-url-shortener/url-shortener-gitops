@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Everything here lives in the monitoring namespace, next to Prometheus and Grafana.
+namespace: monitoring
+
+resources:
+  - rules/service-alerts.yaml
+  - rules/pipeline-alerts.yaml
+
+# Grafana has no persistent volume, so its dashboards must come from here. Its sidecar (label grafana_dashboard=1,
+# every namespace) loads each ConfigMap's JSON file as a dashboard. The names carry no content hash: the sidecar
+# reloads on change, and a hash would leave a stale ConfigMap behind on every edit.
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+
+configMapGenerator:
+  - name: dashboard-services-overview
+    files:
+      - dashboards/services-overview.json
+  - name: dashboard-click-pipeline
+    files:
+      - dashboards/click-pipeline.json

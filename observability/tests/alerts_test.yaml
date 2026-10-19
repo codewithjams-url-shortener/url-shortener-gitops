@@ -1,0 +1,338 @@
+# promtool unit tests for ../rules, run by tests/run.sh. Every alert has a case where it must fire and at least one where it
+# must stay quiet. Series advance every 30s, the rules' evaluation interval here.
+rule_files:
+  - service-alerts.yaml
+  - pipeline-alerts.yaml
+
+evaluation_interval: 30s
+
+tests:
+  # ---------------------------------------------------------------------------------------------------------------- ServiceDown
+  - name: ServiceDown fires once a target has been down for 2 minutes, and only for the target that is down
+    interval: 30s
+    input_series:
+      - series: 'up{namespace="url-service", pod="url-1"}'
+        values: '1x5 0x15'
+      - series: 'up{namespace="redirect-service", pod="redirect-1"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: url-service
+              pod: url-1
+            exp_annotations:
+              summary: "url-service is not being scraped"
+              description: "Prometheus has not been able to scrape url-service (pod url-1) for 2 minutes: it is down, or its /actuator/prometheus endpoint is."
+
+  - name: ServiceDown ignores a namespace that is not one of the three services
+    interval: 30s
+    input_series:
+      - series: 'up{namespace="monitoring", pod="grafana-1"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ServiceDown
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------------------------------- ServiceHttp5xxRateHigh
+  - name: ServiceHttp5xxRateHigh fires when 20% of a busy service's responses are 5xx
+    interval: 30s
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SUCCESS", uri="/links", status="200"}'
+        values: '0+8x20'
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SERVER_ERROR", uri="/links/{shortCode}", status="500"}'
+        values: '0+2x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceHttp5xxRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: url-service
+            exp_annotations:
+              summary: "url-service is answering more than 5% of requests with a 5xx"
+              description: "url-service's 5xx share of responses has been above 5% for the last 2 minutes (20.0%). A deployment in progress would be rolled back by its CloudWatch alarm."
+
+  - name: ServiceHttp5xxRateHigh stays quiet while the 5xx share is under 5%
+    interval: 30s
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SUCCESS", uri="/links", status="200"}'
+        values: '0+19x20'
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SERVER_ERROR", uri="/links/{shortCode}", status="500"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceHttp5xxRateHigh
+        exp_alerts: []
+
+  - name: ServiceHttp5xxRateHigh ignores a high share on too little traffic (under 20 responses in the window)
+    interval: 30s
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SERVER_ERROR", uri="/links/{shortCode}", status="500"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceHttp5xxRateHigh
+        exp_alerts: []
+
+  - name: ServiceHttp5xxRateHigh does not count /actuator, neither the errors nor the traffic that dilutes them
+    interval: 30s
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SERVER_ERROR", uri="/actuator/health", status="503"}'
+        values: '0+10x20'
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SUCCESS", uri="/links", status="200"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceHttp5xxRateHigh
+        exp_alerts: []
+
+  - name: ServiceHttp5xxRateHigh is evaluated per service, so a healthy one does not hide a failing one
+    interval: 30s
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="redirect-service", outcome="SUCCESS", uri="/{shortCode}", status="302"}'
+        values: '0+100x20'
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SUCCESS", uri="/links", status="200"}'
+        values: '0+8x20'
+      - series: 'http_server_requests_seconds_count{namespace="url-service", outcome="SERVER_ERROR", uri="/links/{shortCode}", status="500"}'
+        values: '0+2x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceHttp5xxRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: url-service
+            exp_annotations:
+              summary: "url-service is answering more than 5% of requests with a 5xx"
+              description: "url-service's 5xx share of responses has been above 5% for the last 2 minutes (20.0%). A deployment in progress would be rolled back by its CloudWatch alarm."
+
+  # ------------------------------------------------------------------------------------------------ ClickEventConsumerStalled
+  - name: ClickEventConsumerStalled fires when SQS has not been received from for over 2 minutes, for 2 minutes
+    interval: 30s
+    input_series:
+      - series: 'sqs_consumer_since_last_poll_seconds{namespace="analytics-service"}'
+        values: '1 1 1 130 160 190 220 250 280 310 340'
+    alert_rule_test:
+      # Over 120s from t=1.5m, so still pending (under 2 minutes) at 3m and firing by 4m.
+      - eval_time: 3m
+        alertname: ClickEventConsumerStalled
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: ClickEventConsumerStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: analytics-service
+            exp_annotations:
+              summary: "The click event consumer has stopped receiving from SQS"
+              description: "analytics-service has not received from the click events queue successfully for 280s, so clicks are not being counted."
+
+  - name: ClickEventConsumerStalled stays quiet while the consumer keeps polling
+    interval: 30s
+    input_series:
+      - series: 'sqs_consumer_since_last_poll_seconds{namespace="analytics-service"}'
+        values: '3x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ClickEventConsumerStalled
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------------------------------- ClickEventBatchFailures
+  - name: ClickEventBatchFailures fires when batches have been failing for 5 minutes
+    interval: 30s
+    input_series:
+      - series: 'sqs_consumer_batches_total{namespace="analytics-service", outcome="failure"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ClickEventBatchFailures
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: analytics-service
+              outcome: failure
+            exp_annotations:
+              summary: "Click event batches keep failing"
+              description: "analytics-service finished 16 failed click event batches in the last 10 minutes. A failed batch commits nothing and is redelivered, so counts are late, not lost."
+
+  - name: ClickEventBatchFailures ignores successful batches
+    interval: 30s
+    input_series:
+      - series: 'sqs_consumer_batches_total{namespace="analytics-service", outcome="success"}'
+        values: '0+5x20'
+      - series: 'sqs_consumer_batches_total{namespace="analytics-service", outcome="failure"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ClickEventBatchFailures
+        exp_alerts: []
+
+  # ------------------------------------------------------------------------------------------------------ ClickEventBacklogHigh
+  - name: ClickEventBacklogHigh fires on over 1000 visible messages for 10 minutes, and ignores in-flight ones
+    interval: 30s
+    input_series:
+      - series: 'sqs_consumer_queue_depth{namespace="analytics-service", state="visible"}'
+        values: '1500x40'
+      - series: 'sqs_consumer_queue_depth{namespace="analytics-service", state="in_flight"}'
+        values: '5000x40'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: ClickEventBacklogHigh
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: ClickEventBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: analytics-service
+              state: visible
+            exp_annotations:
+              summary: "The click events queue is backing up"
+              description: "1500 click events have been waiting in the queue for 10 minutes; the consumer is not keeping up."
+
+  - name: ClickEventBacklogHigh stays quiet while the queue is short
+    interval: 30s
+    input_series:
+      - series: 'sqs_consumer_queue_depth{namespace="analytics-service", state="visible"}'
+        values: '20x40'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ClickEventBacklogHigh
+        exp_alerts: []
+
+  # -------------------------------------------------------------------------------------------------------- ClickEventsDelayed
+  - name: ClickEventsDelayed fires when the slowest 5% of events are over a minute old, for 10 minutes
+    interval: 30s
+    input_series:
+      # Every event lands in the (60s, 120s] bucket.
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="30"}'
+        values: '0x40'
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="60"}'
+        values: '0x40'
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="120"}'
+        values: '0+10x40'
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ClickEventsDelayed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Stats are more than a minute behind the clicks"
+              description: "The slowest 5% of click events were acknowledged more than 117s after the click happened."
+
+  - name: ClickEventsDelayed stays quiet when events are acknowledged within seconds
+    interval: 30s
+    input_series:
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="30"}'
+        values: '0+10x40'
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="60"}'
+        values: '0+10x40'
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="120"}'
+        values: '0+10x40'
+      - series: 'sqs_consumer_event_age_seconds_bucket{namespace="analytics-service", le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ClickEventsDelayed
+        exp_alerts: []
+
+  # ---------------------------------------------------------------------------------------------------------- LinksStreamLagHigh
+  - name: LinksStreamLagHigh fires per consumer when a Links stream consumer has not polled for over 5 minutes
+    interval: 30s
+    input_series:
+      - series: 'streams_consumer_lag_seconds{namespace="redirect-service"}'
+        values: '2x40'
+      - series: 'streams_consumer_lag_seconds{namespace="analytics-service"}'
+        values: '2 2 2 400 430 460 490 520 550 580 610 640 670 700 730 760 790 820 850'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: LinksStreamLagHigh
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: LinksStreamLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: analytics-service
+            exp_annotations:
+              summary: "A Links stream consumer has stopped polling"
+              description: "analytics-service has not completed a successful poll of the Links stream for 850s, so link edits and deletes are not reaching its cache or mirror."
+
+  # ------------------------------------------------------------------------------------------------- RedirectCacheHitRatioLow
+  - name: RedirectCacheHitRatioLow fires when under half the lookups hit, with enough lookups to mean something
+    interval: 30s
+    input_series:
+      - series: 'cache_lookup_total{namespace="redirect-service", result="hit"}'
+        values: '0+1x80'
+      - series: 'cache_lookup_total{namespace="redirect-service", result="miss"}'
+        values: '0+4x80'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: RedirectCacheHitRatioLow
+        exp_alerts:
+          - exp_labels:
+              severity: info
+            exp_annotations:
+              summary: "Fewer than half of redirect lookups are served from Redis"
+              description: "The cache hit ratio has been 20% for 15 minutes, so most redirects are going to DynamoDB."
+
+  - name: RedirectCacheHitRatioLow stays quiet while most lookups hit
+    interval: 30s
+    input_series:
+      - series: 'cache_lookup_total{namespace="redirect-service", result="hit"}'
+        values: '0+9x80'
+      - series: 'cache_lookup_total{namespace="redirect-service", result="miss"}'
+        values: '0+1x80'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: RedirectCacheHitRatioLow
+        exp_alerts: []
+
+  - name: RedirectCacheHitRatioLow ignores a poor ratio on almost no traffic (under 100 lookups in 15 minutes)
+    interval: 30s
+    input_series:
+      - series: 'cache_lookup_total{namespace="redirect-service", result="hit"}'
+        values: '0x80'
+      - series: 'cache_lookup_total{namespace="redirect-service", result="miss"}'
+        values: '0+0.1x80'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: RedirectCacheHitRatioLow
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------------------------------------- DynamoDbThrottling
+  - name: DynamoDbThrottling fires when attempts keep being throttled for 5 minutes
+    interval: 30s
+    input_series:
+      - series: 'dynamodb_throttle_count_total{namespace="url-service"}'
+        values: '0+3x40'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DynamoDbThrottling
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: url-service
+            exp_annotations:
+              summary: "DynamoDB is throttling url-service's requests"
+              description: "url-service has had DynamoDB request attempts throttled for 5 minutes (0.10/s)."
+
+  - name: DynamoDbThrottling stays quiet when nothing is throttled
+    interval: 30s
+    input_series:
+      - series: 'dynamodb_throttle_count_total{namespace="url-service"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DynamoDbThrottling
+        exp_alerts: []
